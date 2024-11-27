@@ -1,112 +1,216 @@
-// Set up game variables
-let playerPos = { x: 400, y: 300 };
-let playerSpeed = 3;
-let arrows = [];
-let arrowSpeed = 100;  // Arrow speed set to 100 blocks per second
-let bowLength = 60;  // Bowstring length
-let pullStrength = 0;  // Tracks bow pull
-let arrowRadius = 5;
-let isShooting = false;
+DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BloxD.io Hack Client with Aimbot Bow and Arrows</title>
+    <style>
+        canvas { background-color: #f0f0f0; display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
 
-// Draw the player, bow, and arrows
-function drawGameObjects() {
-  // Clear the canvas
-  context.clearRect(0, 0, canvas.width, canvas.height);
+        // Player settings
+        const player1 = { x: 100, y: 100, width: 50, height: 50, speed: 5, angle: 0 };
+        const player2 = { x: 600, y: 300, width: 50, height: 50, speed: 5, angle: 0 };
 
-  // Draw the player
-  context.beginPath();
-  context.arc(playerPos.x, playerPos.y, 20, 0, 2 * Math.PI);
-  context.fillStyle = "blue";
-  context.fill();
+        // Arrow settings
+        const arrows = [];
+        const arrowSpeed = 5;
+        const arrowLife = 200;  // Distance after which the arrow will disappear
+        const splitDistance = 50;  // Distance to split the arrow (set to 50 blocks)
+        const maxArrows = 5;  // The number of arrows to split into
+        const arrowDamage = 1000;  // Damage per arrow
+        const knockbackForce = 1000;  // Knockback strength for the arrow
 
-  // Get mouse position for aiming
-  let mousePos = getMousePos(canvas, event);
+        let isRapidFireActive = false; // Track if the rapid fire (E key) is active
 
-  // Draw the bow
-  let angle = Math.atan2(mousePos.y - playerPos.y, mousePos.x - playerPos.x);
-  let bowStartX = playerPos.x + 20 * Math.cos(angle);
-  let bowStartY = playerPos.y + 20 * Math.sin(angle);
-  let bowEndX = playerPos.x + (bowLength + pullStrength) * Math.cos(angle);
-  let bowEndY = playerPos.y + (bowLength + pullStrength) * Math.sin(angle);
+        // Calculate the angle between player and mouse position
+        function calculateAngleToMouse(player, mouse) {
+            const dx = mouse.x - (player.x + player.width / 2);
+            const dy = mouse.y - (player.y + player.height / 2);
+            return Math.atan2(dy, dx);
+        }
 
-  // Draw the bowstring
-  context.beginPath();
-  context.moveTo(playerPos.x, playerPos.y);
-  context.lineTo(bowEndX, bowEndY);
-  context.lineWidth = 3;
-  context.strokeStyle = "brown";
-  context.stroke();
+        // Create and shoot an arrow in the calculated direction
+        function shootArrow() {
+            const angle = calculateAngleToMouse(player1, mouse); // Player 1 aims
+            const arrow = {
+                x: player1.x + player1.width / 2,
+                y: player1.y + player1.height / 2,
+                angle: angle,
+                speed: arrowSpeed,
+                life: arrowLife,
+                split: false,  // Flag to indicate if the arrow should split
+                target: player2 // Initially targeting player 2
+            };
+            arrows.push(arrow);
+        }
 
-  // Draw arrows
-  arrows.forEach((arrow) => {
-    context.beginPath();
-    context.arc(arrow.pos.x, arrow.pos.y, arrowRadius, 0, 2 * Math.PI);
-    context.fillStyle = "green";
-    context.fill();
-  });
-}
+        // Update arrow positions and handle movement
+        function updateArrows() {
+            for (let i = 0; i < arrows.length; i++) {
+                const arrow = arrows[i];
+                // Move the arrow based on its angle
+                const moveX = Math.cos(arrow.angle) * arrow.speed;
+                const moveY = Math.sin(arrow.angle) * arrow.speed;
+                arrow.x += moveX;
+                arrow.y += moveY;
 
-// Shoot the arrow
-function shootArrow() {
-  let mousePos = getMousePos(canvas, event);
-  let angle = Math.atan2(mousePos.y - playerPos.y, mousePos.x - playerPos.x);
-  let arrow = {
-    pos: { x: playerPos.x, y: playerPos.y },
-    speed: arrowSpeed + pullStrength,
-    angle: angle,
-    distanceTraveled: 0  // New property to track distance
-  };
-  arrows.push(arrow);
-  pullStrength = 0; // Reset pull strength after shooting
-}
+                // Decrease the arrow's life
+                arrow.life--;
 
-// Update arrows
-function updateArrows() {
-  arrows.forEach((arrow, index) => {
-    // Calculate the distance traveled since the last frame
-    let prevX = arrow.pos.x;
-    let prevY = arrow.pos.y;
+                // If arrow detects nearby players, it splits
+                if (!arrow.split) {
+                    const playerDistance = Math.sqrt(
+                        (player1.x - player2.x) ** 2 + (player1.y - player2.y) ** 2
+                    );
 
-    let angleToPlayer = Math.atan2(playerPos.y - arrow.pos.y, playerPos.x - arrow.pos.x);
-    arrow.pos.x += Math.cos(angleToPlayer) * arrow.speed;
-    arrow.pos.y += Math.sin(angleToPlayer) * arrow.speed;
+                    if (playerDistance <= splitDistance) {
+                        // Split the arrow when players are close (now 50 blocks)
+                        arrow.split = true;
+                        splitArrow(arrow);
+                    }
+                }
 
-    // Calculate the distance between the previous and current position
-    let distance = Math.sqrt(Math.pow(arrow.pos.x - prevX, 2) + Math.pow(arrow.pos.y - prevY, 2));
-    arrow.distanceTraveled += distance;  // Update the total distance traveled
+                // Check for collision with players (simple collision logic)
+                const distanceToPlayer1 = Math.sqrt(
+                    (player1.x + player1.width / 2 - arrow.x) ** 2 +
+                    (player1.y + player1.height / 2 - arrow.y) ** 2
+                );
+                const distanceToPlayer2 = Math.sqrt(
+                    (player2.x + player2.width / 2 - arrow.x) ** 2 +
+                    (player2.y + player2.height / 2 - arrow.y) ** 2
+                );
 
-    // Remove arrows that travel more than 150 blocks
-    if (arrow.distanceTraveled >= 150) {
-      arrows.splice(index, 1);  // Remove the arrow from the array
-    }
-  });
-}
+                if (distanceToPlayer1 < 10 || distanceToPlayer2 < 10) {
+                    arrows.splice(i, 1);
+                    i--;  // Adjust the index after removal
+                }
 
-// Mouse handling
-canvas.addEventListener('mousemove', (event) => {
-  let mousePos = getMousePos(canvas, event);
-  let angle = Math.atan2(mousePos.y - playerPos.y, mousePos.x - playerPos.x);
-  let bowEndX = playerPos.x + (bowLength + pullStrength) * Math.cos(angle);
-  let bowEndY = playerPos.y + (bowLength + pullStrength) * Math.sin(angle);
-  // You can add logic here to handle pulling the bow
-});
+                // Remove the arrow if it has exceeded its life
+                if (arrow.life <= 0) {
+                    arrows.splice(i, 1);
+                    i--; // Adjust index after removal
+                }
+            }
+        }
 
-canvas.addEventListener('mousedown', () => {
-  isShooting = true;
-});
+        // Function to split the arrow into 5 and target the players separately
+        function splitArrow(arrow) {
+            // Split into 5 arrows, each pointing towards different players or directions
+            for (let i = 0; i < maxArrows; i++) {
+                const angleOffset = (Math.random() - 0.5) * Math.PI / 6; // Small random angle offset for diversity
+                const newArrow = {
+                    ...arrow,
+                    angle: arrow.angle + angleOffset,
+                    life: arrowLife, // Reset the life for each new arrow
+                    target: i % 2 === 0 ? player1 : player2 // Alternate between targeting player1 and player2
+                };
+                arrows.push(newArrow);  // Add each new arrow to the array
+            }
+        }
 
-canvas.addEventListener('mouseup', () => {
-  if (isShooting) {
-    shootArrow();
-    isShooting = false;
-  }
-});
+        // Draw the player and the arrows
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);  // Clear canvas
 
-// Game loop
-function gameLoop() {
-  drawGameObjects();
-  updateArrows();
-  requestAnimationFrame(gameLoop);
-}
+            // Draw players (blue and green squares)
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(player1.x, player1.y, player1.width, player1.height);
+            ctx.fillStyle = 'green';
+            ctx.fillRect(player2.x, player2.y, player2.width, player2.height);
 
-gameLoop();
+            // Draw the bow (represented as a line from the player to the mouse position)
+            ctx.strokeStyle = 'brown';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(player1.x + player1.width / 2, player1.y + player1.height / 2);
+            ctx.lineTo(mouse.x, mouse.y);  // Line from player to mouse (bow)
+            ctx.stroke();
+
+            // Draw arrows (red circles)
+            ctx.fillStyle = 'red';
+            for (const arrow of arrows) {
+                ctx.beginPath();
+                ctx.arc(arrow.x, arrow.y, 5, 0, Math.PI * 2);  // Draw the arrow as a circle
+                ctx.fill();
+            }
+        }
+
+        // Update player movement based on keyboard input
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowUp') player1.y -= player1.speed;
+            if (event.key === 'ArrowDown') player1.y += player1.speed;
+            if (event.key === 'ArrowLeft') player1.x -= player1.speed;
+            if (event.key === 'ArrowRight') player1.x += player1.speed;
+
+            if (event.key === 'w') player2.y -= player2.speed;
+            if (event.key === 's') player2.y += player2.speed;
+            if (event.key === 'a') player2.x -= player2.speed;
+            if (event.key === 'd') player2.x += player2.speed;
+
+            // Activate rapid-fire when E is pressed
+            if (event.key === 'e' || event.key === 'E') {
+                if (isRapidFireActive) {
+                    shootArrow(); // Shoot continuously if rapid fire is active
+                }
+            }
+
+            // Deactivate rapid-fire when Q is pressed
+            if (event.key === 'q' || event.key === 'Q') {
+                isRapidFireActive = !isRapidFireActive;  // Toggle rapid fire on or off
+            }
+        });
+
+        document.addEventListener('keyup', (event) => {
+            if (event.key === 'e' || event.key === 'E') {
+                // Stop shooting when E key is released
+            }
+        });
+
+        // Mouse position tracking
+        const mouse = { x: 0, y: 0 };
+        canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = event.clientX - rect.left;
+            mouse.y = event.clientY - rect.top;
+        });
+
+        // Shoot an arrow when mouse is clicked and handle rapid-fire with E key
+        function handleRapidFire() {
+            if (isRapidFireActive) {
+                shootArrow(); // Shoot continuously when the E key is pressed
+            }
+        }
+
+        // Handle knockback effect when the arrow hits the player
+        function applyKnockback(arrow, target) {
+            const dx = target.x + target.width / 2 - arrow.x;
+            const dy = target.y + target.height / 2 - arrow.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const knockbackX = (dx / distance) * knockbackForce;
+            const knockbackY = (dy / distance) * knockbackForce;
+
+            // Apply knockback to target (player)
+            target.x += knockbackX;
+            target.y += knockbackY;
+        }
+
+        // Game loop to continuously update the game state
+        function gameLoop() {
+            updateArrows();
+            handleRapidFire();
+            drawGame();
+
+            requestAnimationFrame(gameLoop);  // Repeat the loop
+        }
+
+        gameLoop();  // Start the game loop
+    </script>
+</body>
+</html>
